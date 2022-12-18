@@ -10,7 +10,7 @@ import numpy as np
 
 import torch
 from torch.utils.data import DataLoader
-from datasets import PlanetoidDataset, TadpoleDataset
+from datasets import PlanetoidDataset, TadpoleDataset, CarpetDataset
 import pytorch_lightning as pl
 from DGMlib.model_dDGM import DGM_Model
 
@@ -28,10 +28,15 @@ def run_training_process(run_params):
         val_data = PlanetoidDataset(split='val', name=run_params.dataset, samples_per_epoch=1)
         test_data = PlanetoidDataset(split='test', name=run_params.dataset, samples_per_epoch=1)
         
-    if run_params.dataset == 'tadpole':
+    elif run_params.dataset == 'tadpole':
         train_data = TadpoleDataset(fold=run_params.fold,train=True, device='cuda')
         val_data = test_data = TadpoleDataset(fold=run_params.fold, train=False,samples_per_epoch=1)
-                                   
+
+    elif run_params.dataset == 'carpet':
+        train_data = PlanetoidDataset(split='train', device='cuda')
+        val_data = PlanetoidDataset(split='val', device='cuda', samples_per_epoch=1)
+        test_data = PlanetoidDataset(split='test', device='cuda', samples_per_epoch=1)
+
     if train_data is None:
         raise Exception("Dataset %s not supported" % run_params.dataset)
         
