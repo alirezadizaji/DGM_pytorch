@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 import torch
 import pickle
 import numpy as np
@@ -158,6 +158,9 @@ class PlanetoidDataset(torch.utils.data.Dataset):
 
 
 class CarpetDataset(torch.utils.data.Dataset):
+    _df: pd.DataFrame = None
+    _val_indices = _test_indices = list()
+
     def __init__(self, 
             filename = 'carpet.csv', 
             split=DataSeparation.TRAIN, 
@@ -173,72 +176,96 @@ class CarpetDataset(torch.utils.data.Dataset):
             samples_per_epoch: int = 100) -> None:
 
         self.samples_per_epoch: int = samples_per_epoch
+        self.device = device
+        
+        self._use_unlabeled = use_unlabeled
+        self._label_col = label_col
+        self._use_non_bio_features = use_non_bio_features
+        self._use_bio_features = use_bio_features
+        self._use_carpet_features = use_carpet_features
+        self._shuffle_seed = shuffle_seed
+        self._val_test_split= val_test_split
+        self._fill_na_vals = fill_na_vals
 
+        if CarpetDataset._df is None:
+            self._load_and_preprocess(filename)
+            self._split()
+        self.num_classes = len(self._df[self._label_col].unique().tolist())
+
+        self.mask = np.zeros(self._df.shape[0], dtype=bool)
+        if split == DataSeparation.VAL:
+            self.mask[self._val_indices] = True
+        elif split == DataSeparation.TEST:
+            self.mask[self._test_indices] = True
+        else:
+            self.mask[self._val_indices + self._test_indices] = True
+            self.mask = ~self.mask
+
+        # Convert to numeric value the labels
+        codes, uniques = pd.factorize(self._df[label_col])
+        encoded_labels = {i: el for i, el in enumerate(uniques)}
+        self.y = one_hot_embedding(codes.tolist(), self.num_classes).to(device)
+        
+        self.X = torch.from_numpy(self._df.drop(self._label_col, axis=1).values.astype(np.float32)).to(device)
+        self.mask = torch.tensor(self.mask).to(device)
+        
+        self.n_features = self.X.size(1)
+
+        print(f"\n@@@ Data Processed: X shape {self.X.shape}, y shape {self.y.shape} @@@", flush=True)
+        print(f"\n@@@ Encoded labels: {encoded_labels} @@@", flush=True)
+
+
+    def _load_and_preprocess(self, filename):
         df = pd.read_csv(f"data/raw/{filename}", header=0)
 
-        # Fill NaN values
-        df = fill_na_vals(df)
-        
         # Drop unlabeled samples if necessary
-        if not use_unlabeled:
-            df = df[df[label_col] != self.unlabeled]
+        if not self._use_unlabeled:
+            df = df[df[self._label_col] != self.unlabeled]
 
         # Shuffle DataFrame
-        df = df.sample(frac=1, random_state=shuffle_seed)
+        df = df.sample(frac=1, random_state=self._shuffle_seed)
 
         print(f"Raw DataFrame Shape: {df.shape}", flush=True)
         
         # Prune features if necessary
-        if not use_non_bio_features:
+        if not self._use_non_bio_features:
             df.drop(self.non_bio_cols, axis=1, inplace=True)
-        if not use_bio_features:
+        if not self._use_bio_features:
             df.drop(self.bio_cols, axis=1, inplace=True)
-        if not use_carpet_features:
+        if not self._use_carpet_features:
             df = df.loc[:, ~df.columns.str.startswith(self.carpet_features_start_str)]
-        
-        print(f"\n@@@ DataFrame Shape after Pruning: {df.shape}, use_non_bio_features? {use_non_bio_features}, \
-            use_bio_features? {use_bio_features}, use_carpet_features? {use_carpet_features} @@@", flush=True)
+
+        print(f"\n@@@ DataFrame Shape after Pruning: {df.shape}, use_non_bio_features? {self._use_non_bio_features}, \
+            use_bio_features? {self._use_bio_features}, use_carpet_features? {self._use_carpet_features} @@@", flush=True)
+
+        # Fill NaN values
+        df = self._fill_na_vals(df)
+
+        print(f"\n@@@ {df.isnull().sum(axis = 0)} cols have at least one NaN values.", flush=True)
 
         # Normalize: use min-max
-        labels = df[label_col]
-        df.drop(label_col, axis=1, inplace=True)
-        df = (df - df.min()) / (df.max() - df.min())
-        df[label_col] = labels
+        labels = df[self._label_col]
+        df.drop(self._label_col, axis=1, inplace=True)
+        df = (df - df.min()) / (df.max() - df.min() + 1e-6)
 
+        df[self._label_col] = labels
+
+        CarpetDataset._df = df
+
+    def _split(self) -> None:
         # Split to train/val/test
-        labels = df[label_col].unique().tolist()
-        self.num_classes = len(labels)
+        df = CarpetDataset._df
+        labels = df[self._label_col].unique().tolist()
 
-        val_indices, test_indices = [], []
         for label in labels:
-            inds = df.index[df[label_col] == label].tolist()
+            inds = df.index[df[self._label_col] == label].tolist()
             l = len(inds)
-            val_size = int(l * val_test_split)
+            val_size = int(l * self._val_test_split)
             train_size = l - 2 * val_size
             arr_inds = np.split(inds, [train_size, train_size + val_size])
-            val_indices = val_indices + list(arr_inds[1])
-            test_indices = test_indices + list(arr_inds[2])
-        
-        self.mask = np.zeros(df.shape[0], dtype=bool)
-        if split == DataSeparation.VAL:
-            self.mask[val_indices] = True
-        elif split == DataSeparation.TEST:
-            self.mask[test_indices] = True
-        else:
-            self.mask[val_indices + test_indices] = True
-            self.mask = ~self.mask
-
-
-        # Convert to numeric value the labels
-        codes, uniques = pd.factorize(df[label_col])
-        encoded_labels = {i: el for i, el in enumerate(uniques)}
-        self.y = one_hot_embedding(codes.tolist(), self.num_classes).to(device)
-        self.X = torch.from_numpy(df.drop(label_col, axis=1).values.astype(np.float32)).to(device)
-        self.mask = torch.tensor(self.mask).to(device)
-        self.n_features = self.X.size(1)
-        print(f"\n@@@ Data Processed: X shape {self.X.shape}, y shape {self.y.shape} @@@", flush=True)
-        print(f"\n@@@ Encoded labels: {encoded_labels} @@@", flush=True)
-
+            CarpetDataset._val_indices = CarpetDataset._val_indices + list(arr_inds[1])
+            CarpetDataset._test_indices = CarpetDataset._test_indices + list(arr_inds[2])
+    
     @property
     def non_bio_cols(self):
         return ['metaclass', 'stage', 'fallstatus', 'fallseverity', 'birthdate', 'visit', 'subjectID', 'sessionID']
