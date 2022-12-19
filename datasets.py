@@ -215,14 +215,14 @@ class CarpetDataset(torch.utils.data.Dataset):
             l = len(inds)
             val_size = int(l * val_test_split)
             train_size = l - 2 * val_size
-            arr_inds = np.split(inds, [train_size, val_size])
+            arr_inds = np.split(inds, [train_size, train_size + val_size])
             val_indices = val_indices + list(arr_inds[1])
             test_indices = test_indices + list(arr_inds[2])
         
         self.mask = np.zeros(df.shape[0], dtype=bool)
         if split == DataSeparation.VAL:
             self.mask[val_indices] = True
-        if split == DataSeparation.TEST:
+        elif split == DataSeparation.TEST:
             self.mask[test_indices] = True
         else:
             self.mask[val_indices + test_indices] = True
