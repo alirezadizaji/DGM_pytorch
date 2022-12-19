@@ -207,7 +207,7 @@ class CarpetDataset(torch.utils.data.Dataset):
 
         # Split to train/val/test
         labels = df[label_col].unique().tolist()
-        num_labels = len(labels)
+        self.num_classes = len(labels)
 
         val_indices, test_indices = [], []
         for label in labels:
@@ -232,10 +232,10 @@ class CarpetDataset(torch.utils.data.Dataset):
         # Convert to numeric value the labels
         codes, uniques = pd.factorize(df[label_col])
         encoded_labels = {i: el for i, el in enumerate(uniques)}
-        self.y = one_hot_embedding(codes.tolist(), num_labels).to(device)
+        self.y = one_hot_embedding(codes.tolist(), self.num_classes).to(device)
         self.X = torch.from_numpy(df.drop(label_col, axis=1).values.astype(np.float32)).to(device)
         self.mask = torch.tensor(self.mask).to(device)
-
+        self.n_features = self.X.size(1)
         print(f"\n@@@ Data Processed: X shape {self.X.shape}, y shape {self.y.shape} @@@", flush=True)
         print(f"\n@@@ Encoded labels: {encoded_labels} @@@", flush=True)
 
@@ -259,4 +259,5 @@ class CarpetDataset(torch.utils.data.Dataset):
         return self.samples_per_epoch
 
     def __getitem__(self, idx):
-        return self.X,self.y,self.mask,[[]]
+        self_loop_edge_index = torch.repeat_interleave(torch.arange(self.X.size(0)).unsqueeze(0), 2, dim=0)
+        return self.X,self.y,self.mask,self_loop_edge_index

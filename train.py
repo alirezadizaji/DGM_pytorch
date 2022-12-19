@@ -3,7 +3,7 @@ sys.path.insert(0,'./keops')
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
-os.environ["USE_KEOPS"] = "True";
+os.environ["USE_KEOPS"] = "False"
 
 import pickle
 import numpy as np
@@ -33,9 +33,9 @@ def run_training_process(run_params):
         val_data = test_data = TadpoleDataset(fold=run_params.fold, train=False,samples_per_epoch=1)
 
     elif run_params.dataset == 'carpet':
-        train_data = PlanetoidDataset(split='train', device='cuda')
-        val_data = PlanetoidDataset(split='val', device='cuda', samples_per_epoch=1)
-        test_data = PlanetoidDataset(split='test', device='cuda', samples_per_epoch=1)
+        train_data = CarpetDataset(split='train', device='cuda:0')
+        val_data = CarpetDataset(split='val', device='cuda:0', samples_per_epoch=1)
+        test_data = CarpetDataset(split='test', device='cuda:0', samples_per_epoch=1)
 
     if train_data is None:
         raise Exception("Dataset %s not supported" % run_params.dataset)
@@ -123,5 +123,4 @@ if __name__ == "__main__":
 
     parser.set_defaults(default_root_path='./log')
     params = parser.parse_args(namespace=params)
-
     run_training_process(params)
