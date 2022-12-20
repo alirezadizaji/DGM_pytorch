@@ -242,10 +242,12 @@ class CarpetDataset(torch.utils.data.Dataset):
         df = self._fill_na_vals(df)
         print(f"\n@@@ NaN Status: {len(df.isnull().sum(axis = 0).to_numpy().nonzero())} out of {df.shape[1]} cols have at least one NaN values.", flush=True)
 
-        # Normalize: use min-max
+        # Normalize and clip
         labels = df[self._label_col]
         df.drop(self._label_col, axis=1, inplace=True)
-        df = (df - df.min()) / (df.max() - df.min() + 1e-6)
+        df = (df - df.mean()) / df.std()
+        df.clip(-3, 3, inplace=True)
+        df = df - df.min()
 
         df[self._label_col] = labels
 
