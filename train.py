@@ -89,7 +89,7 @@ def run_training_process(run_params):
                                             callbacks=callbacks)
     
     trainer.fit(model, datamodule=MyDataModule())
-    trainer.test()
+    trainer.test(dataloaders=test_loader)
     
 if __name__ == "__main__":
 
