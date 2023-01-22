@@ -32,10 +32,10 @@ def run_training_process(run_params):
         train_data = TadpoleDataset(fold=run_params.fold,train=True, device='cuda')
         val_data = test_data = TadpoleDataset(fold=run_params.fold, train=False,samples_per_epoch=1)
 
-    elif run_params.dataset == 'carpet':
-        train_data = CarpetDataset(split='train', device='cuda:0')
-        val_data = CarpetDataset(split='val', device='cuda:0', samples_per_epoch=1)
-        test_data = CarpetDataset(split='test', device='cuda:0', samples_per_epoch=1)
+    elif run_params.dataset in ['carpet', 'threeClassCarpet']:
+        train_data = CarpetDataset(filename=f"{run_params.dataset}.csv", split='train', device='cuda:0')
+        val_data = CarpetDataset(filename=f"{run_params.dataset}.csv", split='val', device='cuda:0', samples_per_epoch=1)
+        test_data = CarpetDataset(filename=f"{run_params.dataset}.csv", split='test', device='cuda:0', samples_per_epoch=1)
 
     if train_data is None:
         raise Exception("Dataset %s not supported" % run_params.dataset)
